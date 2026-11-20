@@ -1,52 +1,65 @@
 #!/usr/bin/env python3
-"""Entry for the make.fun news-image-20261119 competition.
+"""Entry point for the 'THE WORLD - 19 November 2026' news-image entry.
 
-The competition asks for a program that writes one image summing up the
-world's news of Thursday 19 November 2026 to /output/entry.png. The
-image shipped with this repository (entry.png) is a front page for that
-day: Trump, Xi and Putin hold their first three-way summit in Shenzhen
-and issue a Declaration Towards Peace, the International Court of
-Justice rules that Myanmar committed genocide against the Rohingya,
-Ukraine hits the Crimea bridge for a third time, Israel pushes into
-central Gaza, Anthropic's $81.3B IPO smashes the record on its Nasdaq
-debut, Cyclone Akvan nears India's east coast, and unrest spreads in
-Bangladesh.
+The artwork lives in the repository root as entry.png (1024x1024).
+This script stages that single image into /output so the harness can
+collect it, and then proves the staged copy is byte-identical to the
+original by comparing SHA-256 digests of both files.
 
-Running this program places that image at the required path. Nothing
-is fetched, nothing is generated at run time, and nothing depends on
-the clock, so repeated runs produce identical bytes. It uses only the
-Python 3.13 standard library.
-
-Local check:
-    mkdir -p out && MAKEFUN_OUTPUT_DIR=out python3 main.py
+Standard library only; no third-party dependencies.
 """
 
-import os
+import hashlib
 import shutil
 import sys
 from pathlib import Path
 
-OUTPUT_NAME = "entry.png"
-BUNDLED_IMAGE = Path(__file__).resolve().parent / OUTPUT_NAME
+SOURCE_NAME = "entry.png"
+OUTPUT_DIR = Path("/output")
 
 
-def copy_entry() -> Path:
-    """Copy the bundled front page to the grader's output directory."""
-    if not BUNDLED_IMAGE.is_file():
-        print(f"news-image-20261119: bundled image missing: {BUNDLED_IMAGE}", file=sys.stderr)
-        raise SystemExit(2)
-    destination_dir = Path(os.environ.get("MAKEFUN_OUTPUT_DIR", "/output"))
-    destination_dir.mkdir(parents=True, exist_ok=True)
-    destination = destination_dir / OUTPUT_NAME
-    shutil.copyfile(BUNDLED_IMAGE, destination)
-    return destination
+def sha256_of(path: Path) -> str:
+    """Return the hex SHA-256 digest of the file at *path*."""
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
 
 
-def run() -> int:
-    written = copy_entry()
-    print(f"news-image-20261119: wrote {written} ({written.stat().st_size} bytes)")
+def main() -> int:
+    source = Path(__file__).resolve().parent / SOURCE_NAME
+
+    if not source.is_file():
+        print(f"error: {SOURCE_NAME} not found next to main.py", file=sys.stderr)
+        return 1
+
+    if OUTPUT_DIR.exists() and not OUTPUT_DIR.is_dir():
+        print(f"error: {OUTPUT_DIR} exists but is not a directory", file=sys.stderr)
+        return 1
+
+    try:
+        OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+    except OSError as exc:
+        print(f"error: could not create {OUTPUT_DIR}: {exc}", file=sys.stderr)
+        return 1
+
+    destination = OUTPUT_DIR / SOURCE_NAME
+    shutil.copyfile(source, destination)
+
+    source_hash = sha256_of(source)
+    destination_hash = sha256_of(destination)
+    if source_hash != destination_hash:
+        print(
+            f"error: {destination} differs from {source} "
+            f"(source {source_hash}, copy {destination_hash})",
+            file=sys.stderr,
+        )
+        return 1
+
+    print(f"ok: {SOURCE_NAME} copied to {destination} (sha256 {destination_hash})")
     return 0
 
 
 if __name__ == "__main__":
-    sys.exit(run())
+    raise SystemExit(main())
